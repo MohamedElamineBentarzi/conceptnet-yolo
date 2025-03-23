@@ -1,2 +1,4 @@
 config.ini
 data/*
+playground.ipynb
+*/__pycache__/*
