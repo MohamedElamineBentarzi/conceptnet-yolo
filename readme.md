@@ -2,13 +2,13 @@
 ![alt text](streamlit.png)
 ![alt text](yolo_out.png)
 ![alt text](graph.png)
-This project connects **YOLOv8 object detection** with **ConceptNet** knowledge graph to generate rich, contextual **scene graphs** based on real-world knowledge.
+This project connects **YOLOv11 object detection** with **ConceptNet** knowledge graph to generate rich, contextual **scene graphs** based on real-world knowledge.
 
 When you upload an image:
 
-- Objects are detected with YOLOv8
+- Objects are detected with YOLOv11
 - Relevant concepts and relationships between objects are fetched from ConceptNet
-- The best relations are selected using sentence embedding similarity
+- The best relations are selected using **sentence embedding similarity**
 - An **interactive scene graph** is generated and displayed
 
 ---
@@ -23,7 +23,7 @@ In this project, ConceptNet helps enrich detected objects with human-like unders
 
 ## 📦 Features
 
-- 🧠 **YOLOv8 object detection** with bounding boxes
+- 🧠 **YOLOv11 object detection** with bounding boxes
 - 🌐 **Knowledge graph integration** with ConceptNet
 - 🔎 **Semantic filtering** using SentenceTransformers
 - 📊 **Interactive scene graph** using Pyvis
@@ -66,7 +66,7 @@ This will:
 - Extract English triplets
 - Create `conceptnet_en.rdf` in your `data` path
 
-Then upload `conceptnet_en.rdf` to your Fuseki dataset.
+Then upload `conceptnet_en.rdf` to your Fuseki server.
 
 ### 4. Install Python dependencies
 
