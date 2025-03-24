@@ -1,5 +1,6 @@
 # 🧠 YOLO + ConceptNet Scene Graph Visualizer
-
+![alt text](yolo_out.png)
+![alt text](image.png)
 This project connects **YOLOv8 object detection** with **ConceptNet** knowledge graph to generate rich, contextual **scene graphs** based on real-world knowledge.
 
 When you upload an image:
