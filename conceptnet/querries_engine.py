@@ -259,12 +259,3 @@ def get_graph_data(objects):
     return used_for_result, is_a_result, at_location_result
 
 
-def make_graph(used_for_result, is_a_result, at_location_result):
-    result = []
-    for k in used_for_result:
-        result.append((k, "used_for", used_for_result[k]))
-    for k in is_a_result:
-        result.append((k, "is_a", is_a_result[k]))
-    for k in at_location_result:
-        result.append((k, "at_location", at_location_result[k]))
-    return result
