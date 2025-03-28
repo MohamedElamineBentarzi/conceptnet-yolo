@@ -5,7 +5,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import itertools
 import numpy as np
-
+from itertools import combinations
 
 def contextual_choice_of_uses(candidates):
 
@@ -259,3 +259,214 @@ def get_graph_data(objects):
     return used_for_result, is_a_result, at_location_result
 
 
+#====== fullly connected graph ======
+
+
+
+def get_rel_count(obj):
+    """
+    Get the number of relations for a given object.
+    """
+    query = f"""
+        PREFIX concepts: <http://localhost:3030/rcra_project/conceptnet/concept/>
+        PREFIX relations: <http://localhost:3030/rcra_project/conceptnet/relation/>
+        PREFIX metadata: <http://localhost:3030/rcra_project/conceptnet/metadata/>
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+        SELECT ?p (COUNT(?p) AS ?count)
+        WHERE {{
+            ?r ?p ?o .
+            FILTER (?o = concepts:{obj})
+        }}
+        GROUP BY ?p
+    """
+    
+    results = execute_query(query)
+    
+    rel_count = {}
+    for result in results:
+        rel_count[result['p']] = result['count']
+    
+    return rel_count
+
+def get_super(obj):
+    """
+    Get the superclasses of a given object.
+    """
+    query = f"""
+        PREFIX concepts: <http://localhost:3030/rcra_project/conceptnet/concept/>
+        PREFIX relations: <http://localhost:3030/rcra_project/conceptnet/relation/>
+        PREFIX metadata: <http://localhost:3030/rcra_project/conceptnet/metadata/>
+        PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+        SELECT ?o
+        WHERE {{
+            ?r relations:is_a ?o .
+            FILTER (?r = concepts:{obj})
+        }}
+    """
+    
+    results = execute_query(query)
+    
+    super_classes = []
+    for result in results:
+        super_classes.append(result['o'])
+    
+    return super_classes
+
+
+
+def get_common_connections(object1, object2):
+  
+    objects_list = [object1, object2]
+    # Convert Python list into a SPARQL-friendly string of URIs: concepts:pen, concepts:paper, etc.
+    items_str = " ".join(f"concepts:{obj}" for obj in objects_list)
+    list_size = len(objects_list)  # For checking "common to all items"
+
+    query = f"""
+    PREFIX concepts: <http://localhost:3030/rcra_project/conceptnet/concept/>
+    PREFIX relations: <http://localhost:3030/rcra_project/conceptnet/relation/>
+    PREFIX metadata: <http://localhost:3030/rcra_project/conceptnet/metadata/>
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+    ##############################################################################
+    # We do this in ONE query with a sub-select for (r, t) pairs that appear
+    # for *all* items, then we join back in the main query to return each
+    # (item, relation, target, weight).
+    ##############################################################################
+    SELECT ?item ?relation ?target ?weight
+    WHERE {{
+      
+      ##############################################################################
+      # 1) SUB-SELECT: find (r, t) that appear for ALL items in `objects_list`.
+      #    - We'll call the item variable ?x inside the sub-select.
+      #    - We do a COUNT(DISTINCT ?x).
+      #    - Then we HAVING(?cnt = list_size) to keep only "common" pairs.
+      ##############################################################################
+      {{
+        SELECT ?r ?t (COUNT(DISTINCT ?x) AS ?cnt)
+        WHERE {{
+          VALUES ?x {{ {items_str} }}
+
+          # A) direct used_for
+          {{
+            ?x relations:used_for ?t .
+            BIND(relations:used_for AS ?r)
+          }}
+          UNION
+          # B) direct is_a
+          {{
+            ?x relations:is_a ?t .
+            BIND(relations:is_a AS ?r)
+          }}
+          UNION
+          # C) direct at_location
+          {{
+            ?x relations:at_location ?t .
+            BIND(relations:at_location AS ?r)
+          }}
+          UNION
+          # D) fallback at_location (if no direct at_location)
+          {{
+            FILTER NOT EXISTS {{ ?x relations:at_location ?directLoc. }}
+            ?x (relations:is_a)+ ?super .
+            ?super relations:at_location ?t .
+            BIND(relations:at_location AS ?r)
+          }}
+        }}
+        GROUP BY ?r ?t
+        HAVING (?cnt = {list_size})  # keep only pairs that appear for ALL items
+      }}
+
+      ##############################################################################
+      # 2) MAIN QUERY: now retrieve (item, relation, target, weight) for each
+      #    item in the list. We do the same union logic for actual edges, but
+      #    we keep only if (relation, target) = (r, t) from the sub-select above.
+      ##############################################################################
+      VALUES ?item {{ {items_str} }}
+
+      # Union logic: produce ?item, ?relation, ?target, ?weight
+      
+      # A) direct used_for
+      {{
+        ?item relations:used_for ?target .
+        ?triple rdf:subject ?item ;
+                rdf:predicate relations:used_for ;
+                rdf:object ?target ;
+                metadata:hasWeight ?weight .
+        BIND(relations:used_for AS ?relation)
+      }}
+      UNION
+      # B) direct is_a
+      {{
+        ?item relations:is_a ?target .
+        ?triple rdf:subject ?item ;
+                rdf:predicate relations:is_a ;
+                rdf:object ?target ;
+                metadata:hasWeight ?weight .
+        BIND(relations:is_a AS ?relation)
+      }}
+      UNION
+      # C) direct at_location
+      {{
+        ?item relations:at_location ?target .
+        ?triple rdf:subject ?item ;
+                rdf:predicate relations:at_location ;
+                rdf:object ?target ;
+                metadata:hasWeight ?weight .
+        BIND(relations:at_location AS ?relation)
+      }}
+      UNION
+      # D) fallback at_location
+      {{
+        FILTER NOT EXISTS {{ ?item relations:at_location ?directLoc2. }}
+        ?item (relations:is_a)+ ?super2 .
+        ?super2 relations:at_location ?target .
+        ?triple rdf:subject ?super2 ;
+                rdf:predicate relations:at_location ;
+                rdf:object ?target ;
+                metadata:hasWeight ?weight .
+        BIND(relations:at_location AS ?relation)
+      }}
+
+      ##############################################################################
+      # 3) Join with sub-select: Keep only rows where (relation, target) == (r, t)
+      #    from the sub-select above. If (relation, target) is not "common," it
+      #    won't appear in the final result set.
+      ##############################################################################
+      FILTER(?relation = ?r && ?target = ?t)
+      
+    }}
+    ORDER BY ?item DESC(?weight)
+    """
+    
+    exe_result = execute_query(query)
+    result = []
+    for r in exe_result:
+        result.append((r['item'], r['relation'], r['target']))
+    
+    while len(result) ==0 :
+        # get obj1 parrents
+        super_classes = get_super(object1)
+        # get obj2 parrents
+        super_classes2 = get_super(object2)
+        # check the one with the less nb of parrents 
+        if len(super_classes) > len(super_classes2):
+            result = [(object2, "is_a", super_classes2[0])]
+            result.extend(get_common_connections(object1, super_classes2[0]))
+            
+        else:
+            result = [(object1, "is_a", super_classes[0])]
+            result.extend(get_common_connections(object2, super_classes[0]))
+    return result
+  
+def get_connected_graph(object_list):
+    """
+    Get the graph data for a list of objects.
+    """
+    pairs = combinations(object_list, 2)
+    graph = []
+    for obj1, obj2 in pairs:
+        connections = get_common_connections(obj1, obj2)
+        graph.extend(connections)
+    return list(set(graph))
