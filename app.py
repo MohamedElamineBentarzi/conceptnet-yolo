@@ -6,7 +6,7 @@ from PIL import Image
 from pyvis.network import Network
 import tempfile
 import os
-from conceptnet.querries_engine import get_graph_data,get_connected_graph
+from conceptnet.querries_engine import get_graph_data
 
 
 
@@ -29,35 +29,14 @@ def make_graph(used_for_result, is_a_result, at_location_result):
 
 def draw_triplet_graph_pyvis(triplets):
     net = Network(height='600px', width='100%', directed=True)
-
-    # Add nodes and edges
     for src, rel, tgt in triplets:
         net.add_node(src, label=src)
         net.add_node(tgt, label=tgt)
         net.add_edge(src, tgt, label=rel)
 
-    # Set physics options with valid JSON
-    net.set_options('''
-    {
-      "physics": {
-        "forceAtlas2Based": {
-          "gravitationalConstant": -100,
-          "centralGravity": 0.01,
-          "springLength": 150,
-          "springConstant": 0.08
-        },
-        "maxVelocity": 50,
-        "solver": "forceAtlas2Based",
-        "timestep": 0.35,
-        "stabilization": { "iterations": 150 }
-      }
-    }
-    ''')
-
     tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".html")
     net.save_graph(tmp_path.name)
     return tmp_path.name
-
 
 # --- Object Detection ---
 def detect_objects(image):
@@ -84,7 +63,6 @@ def detect_objects(image):
 
 # --- Streamlit UI ---
 uploaded_image = st.file_uploader("📷 Upload an image", type=["jpg", "jpeg", "png"])
-contextual_graph = st.checkbox("Contextual Graph", value=True)
 process_button = st.button("🛠️ Detect Objects and Generate Graph")
 
 if uploaded_image and process_button:
@@ -95,16 +73,12 @@ if uploaded_image and process_button:
     image_out, labels = detect_objects(img_np)
     unique_labels = sorted(set([l.replace(" ","_") for l in labels]))
     
-
+    print(unique_labels)
 
     # Get triplets
-    if contextual_graph:
-        used_for_result, is_a_result, at_location_result = get_graph_data(unique_labels)
-        triplets = make_graph(used_for_result, is_a_result, at_location_result)
-        graph_html_path = draw_triplet_graph_pyvis(triplets)
-    else:
-        triplets = get_connected_graph(unique_labels)
-        graph_html_path = draw_triplet_graph_pyvis(triplets)
+    used_for_result, is_a_result, at_location_result = get_graph_data(unique_labels)
+    triplets = make_graph(used_for_result, is_a_result, at_location_result)
+    graph_html_path = draw_triplet_graph_pyvis(triplets)
 
     # --- Image + Object List Side-by-Side ---
     col1, col2 = st.columns([3, 1])  # Wider image column
